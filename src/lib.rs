@@ -1,9 +1,9 @@
 use core::panic;
+use rand::distributions::*;
 use std::borrow::Borrow;
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::io::Result;
 use std::mem::{swap, take};
 
 enum Entry<Key, Value> {
@@ -54,6 +54,10 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
         }
     }
 
+    fn index(&self, hash: usize) -> usize {
+        hash & (self.xs.len() - 1)
+    }
+
     pub fn get_index<Q>(&self, key: &Q) -> usize
     where
         Key: Borrow<Q>,
@@ -61,7 +65,8 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
     {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
-        hasher.finish() as usize % self.xs.len()
+        // hasher.finish() as usize % self.xs.len()
+        self.index(hasher.finish() as usize)
     }
 
     pub fn len(&self) -> usize {
@@ -159,8 +164,18 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
         }
     }
 
+    fn occupied_factor(&self) -> f64 {
+        if self.xs.is_empty() {
+            1.0
+        } else {
+            self.n_occupied as f64 / self.xs.len() as f64
+        }
+    }
+
     fn resize(&mut self) {
-        let new_size = max(64, self.xs.len() * 2);
+        let resize_factor = if self.occupied_factor() > 0.75 { 2 } else { 1 };
+        let new_size = max(64, self.xs.len() * resize_factor);
+
         let mut new_table = Self {
             xs: (0..new_size).map(|_| Entry::Vacant).collect(),
             n_occupied: 0,
@@ -196,5 +211,84 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
             self.n_vacant -= 1;
         }
         result
+    }
+}
+
+fn test() {
+    let mut map1 = HashMap::new();
+    let mut map2 = std::collections::HashMap::new();
+
+    let key_gen = Uniform::from(0..1000);
+    let op_gen = Uniform::from(0..5);
+    let mut rng = rand::thread_rng();
+
+    for _ in 0..1_000_1000 {
+        let val = key_gen.sample(&mut rng);
+        let key = val;
+        match op_gen.sample(&mut rng) {
+            0 => {
+                // insert
+                assert_eq!(map1.insert(key, val), map2.insert(key, val));
+            }
+            1 => {
+                // get mut
+                assert_eq!(
+                    map1.get_mut(&key).map(|x| {
+                        *x += 1;
+                        x
+                    }),
+                    map2.get_mut(&key).map(|x| {
+                        *x += 1;
+                        x
+                    })
+                );
+            }
+            2 => {
+                assert_eq!(map1.get(&key), map2.get(&key));
+            }
+            3 => {
+                assert_eq!(map1.remove(&key), map2.remove(&key));
+            }
+            _ => {
+                assert_eq!(map1.len(), map2.len());
+            }
+        }
+    }
+}
+
+fn run_bench_i64<M>()
+where
+    M: MapTrait<i64, i64>,
+{
+    let mut map = M::new();
+
+    let key_gen = Uniform::from(0..1000);
+    let op_gen = Uniform::from(0..4);
+    let mut rng = rand::thread_rng();
+    for _ in 0..10000000 {
+        let val = key_gen.sample(&mut rng);
+        let key = val;
+        match op_gen.sample(&mut rng) {
+            0 => {
+                // insert
+                map.insert(key, val);
+            }
+            1 => {
+                // get mut
+                map.get_mut(&key).map(|x| {
+                    *x += 1;
+                    x
+                });
+            }
+            2 => {
+                // get
+                map.get(&key);
+            }
+            3 => {
+                // remove
+                map.remove(&key);
+            }
+            _ => {}
+        }
     }
 }
