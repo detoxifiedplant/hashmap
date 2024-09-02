@@ -192,14 +192,22 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
     fn insert_helper(&mut self, key: Key, val: Val) -> Option<Val> {
         let idx = self.get_index(&key);
         let mut result = None;
+        let mut swap_tombstone: Option<&mut Entry<Key, Val>> = None;
         for entry in self.iter_mut_starting_at(idx) {
             match entry {
                 Entry::Occupied { key: k, .. } if (k as &Key).borrow() == &key => {
                     result = entry.replace(val);
                     break;
                 }
+                Entry::Tombstone if swap_tombstone.is_none() => {
+                    swap_tombstone = Some(entry);
+                }
                 Entry::Vacant => {
-                    *entry = Entry::Occupied { key, val };
+                    if swap_tombstone.is_some(){
+                        *swap_tombstone.unwrap() = Entry::Occupied { key, val };
+                    } else {
+                        *entry = Entry::Occupied { key, val };
+                    }
                     break;
                 }
                 _ => {}
