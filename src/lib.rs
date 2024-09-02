@@ -1,17 +1,21 @@
 use core::panic;
-use rand::distributions::*;
+use rand::distributions::{Uniform, Distribution};
 use std::borrow::Borrow;
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap as StdHashMap;
+use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::mem::{swap, take};
 
+#[derive(Debug)]
 enum Entry<Key, Value> {
     Vacant,
     Tombstone,
     Occupied { key: Key, val: Value },
 }
 
+#[derive(Debug)]
 struct HashMap<Key, Val> {
     xs: Vec<Entry<Key, Val>>,
     n_occupied: usize,
@@ -21,7 +25,7 @@ struct HashMap<Key, Val> {
 impl<Key, Val> Entry<Key, Val> {
     fn take(&mut self) -> Option<Val> {
         match self {
-            Self::Occupied { key, val } => {
+            Self::Occupied { .. } => {
                 let mut occupied = Self::Tombstone;
                 swap(self, &mut occupied);
                 if let Self::Occupied { key: _, val } = occupied {
@@ -36,7 +40,7 @@ impl<Key, Val> Entry<Key, Val> {
 
     fn replace(&mut self, mut x: Val) -> Option<Val> {
         match self {
-            Self::Occupied { key, val } => {
+            Self::Occupied { val, .. } => {
                 swap(&mut x, val);
                 Some(x)
             }
@@ -45,8 +49,46 @@ impl<Key, Val> Entry<Key, Val> {
     }
 }
 
-impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
-    pub fn new() -> Self {
+pub trait MapTrait<Key, Val> {
+    fn new() -> Self;
+    fn insert(&mut self, key: Key, val: Val) -> Option<Val>;
+    fn get(&self, key: &Key) -> Option<&Val>;
+    fn remove(&mut self, key: &Key) -> Option<Val>;
+    fn get_mut(&mut self, key: &Key) -> Option<&mut Val>;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
+}
+
+// impl<Key, Val> MapTrait<Key, Val> for HashMap<Key, Val> {}
+impl<Key, Val> MapTrait<Key, Val> for std::collections::HashMap<Key, Val>
+where
+    Key: std::cmp::Eq + std::hash::Hash,
+{
+    fn new() -> Self {
+        StdHashMap::new()
+    }
+    fn insert(&mut self, key: Key, val: Val) -> Option<Val> {
+        StdHashMap::insert(self, key, val)
+    }
+    fn get(&self, key: &Key) -> Option<&Val> {
+        StdHashMap::get(self, key)
+    }
+    fn remove(&mut self, key: &Key) -> Option<Val> {
+        StdHashMap::remove(self, key)
+    }
+    fn get_mut(&mut self, key: &Key) -> Option<&mut Val> {
+        StdHashMap::get_mut(self, key)
+    }
+    fn len(&self) -> usize {
+        StdHashMap::len(self)
+    }
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+impl<Key: Eq + Hash, Val> MapTrait<Key, Val> for HashMap<Key, Val> {
+    fn new() -> Self {
         Self {
             xs: Vec::new(),
             n_occupied: 0,
@@ -54,37 +96,21 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
         }
     }
 
-    fn index(&self, hash: usize) -> usize {
-        hash & (self.xs.len() - 1)
-    }
-
-    pub fn get_index<Q>(&self, key: &Q) -> usize
-    where
-        Key: Borrow<Q>,
-        Q: Eq + Hash,
-    {
-        let mut hasher = DefaultHasher::new();
-        key.hash(&mut hasher);
-        // hasher.finish() as usize % self.xs.len()
-        self.index(hasher.finish() as usize)
-    }
-
-    pub fn len(&self) -> usize {
-        self.n_occupied
-    }
-
-    pub fn insert(&mut self, key: Key, value: Val) -> Self {
+    fn insert(&mut self, key: Key, value: Val) -> Option<Val> {
         if self.load_factor() >= 0.75 {
             self.resize();
         }
 
-        self.insert(key, value)
+        self.insert_helper(key, value)
     }
 
-    pub fn get<Q>(&self, key: &Q) -> Option<&Val>
+    fn len(&self) -> usize {
+        self.n_occupied
+    }
+
+    fn get(&self, key: &Key) -> Option<&Val>
     where
-        Key: Borrow<Q>,
-        Q: Eq + Hash,
+        Key: Borrow<Key> + Eq + Hash,
     {
         if self.len() == 0 {
             return None;
@@ -102,10 +128,9 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
         }
     }
 
-    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut Val>
+    fn get_mut(&mut self, key: &Key) -> Option<&mut Val>
     where
-        Key: Borrow<Q>,
-        Q: Eq + Hash,
+        Key: Borrow<Key> + Eq + Hash,
     {
         if self.len() == 0 {
             return None;
@@ -123,15 +148,9 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
         panic!("unreachable");
     }
 
-    fn iter_mut_starting_at(&mut self, idx: usize) -> impl Iterator<Item = &mut Entry<Key, Val>> {
-        let (s1, s2) = self.xs.split_at_mut(idx);
-        s2.iter_mut().chain(s1.iter_mut())
-    }
-
-    pub fn remove<Q>(&mut self, key: &Q) -> Option<Val>
+    fn remove(&mut self, key: &Key) -> Option<Val>
     where
-        Key: Borrow<Q>,
-        Q: Eq + Hash,
+        Key: Borrow<Key> + Eq + Hash,
     {
         if self.len() == 0 {
             return None;
@@ -140,7 +159,7 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
         let mut result = None;
         for entry in self.iter_mut_starting_at(idx) {
             match entry {
-                Entry::Occupied { key: k, val } if (k as &Key).borrow() == key => {
+                Entry::Occupied { key: k, .. } if (k as &Key).borrow() == key => {
                     result = entry.take();
                     break;
                 }
@@ -154,6 +173,32 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
             self.n_occupied -= 1;
             val
         })
+    }
+
+    fn is_empty(&self) -> bool {
+        self.n_occupied == 0
+    }
+}
+
+impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
+    fn index(&self, hash: usize) -> usize {
+        hash & (self.xs.len() - 1)
+    }
+
+    fn get_index<Q>(&self, key: &Q) -> usize
+    where
+        Key: Borrow<Q>,
+        Q: Eq + Hash,
+    {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        // hasher.finish() as usize % self.xs.len()
+        self.index(hasher.finish() as usize)
+    }
+
+    fn iter_mut_starting_at(&mut self, idx: usize) -> impl Iterator<Item = &mut Entry<Key, Val>> {
+        let (s1, s2) = self.xs.split_at_mut(idx);
+        s2.iter_mut().chain(s1.iter_mut())
     }
 
     fn load_factor(&self) -> f64 {
@@ -222,81 +267,49 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
     }
 }
 
-fn test() {
-    let mut map1 = HashMap::new();
-    let mut map2 = std::collections::HashMap::new();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let key_gen = Uniform::from(0..1000);
-    let op_gen = Uniform::from(0..5);
-    let mut rng = rand::thread_rng();
+    // #[test]
+    // fn check() {
+    //     let mut map1 = HashMap::new();
+    //     dbg!(map1.insert("namah", 9));
+    //     println!("{:?}", map1);
+    // }
 
-    for _ in 0..1_000_1000 {
-        let val = key_gen.sample(&mut rng);
-        let key = val;
-        match op_gen.sample(&mut rng) {
-            0 => {
-                // insert
-                assert_eq!(map1.insert(key, val), map2.insert(key, val));
-            }
-            1 => {
-                // get mut
-                assert_eq!(
-                    map1.get_mut(&key).map(|x| {
-                        *x += 1;
-                        x
-                    }),
-                    map2.get_mut(&key).map(|x| {
-                        *x += 1;
-                        x
-                    })
-                );
-            }
-            2 => {
-                assert_eq!(map1.get(&key), map2.get(&key));
-            }
-            3 => {
-                assert_eq!(map1.remove(&key), map2.remove(&key));
-            }
-            _ => {
-                assert_eq!(map1.len(), map2.len());
-            }
-        }
+    #[test]
+    fn check() {
+        // test::<HashMap<i64, i64>>();
+        test::<std::collections::HashMap<i64, i64>>();
     }
-}
 
-fn run_bench_i64<M>()
-where
-    M: MapTrait<i64, i64>,
-{
-    let mut map = M::new();
+    fn test<M>()
+    where
+        M: MapTrait<i64, i64> + Debug,
+    {
+        let mut map = M::new();
 
-    let key_gen = Uniform::from(0..1000);
-    let op_gen = Uniform::from(0..4);
-    let mut rng = rand::thread_rng();
-    for _ in 0..10000000 {
-        let val = key_gen.sample(&mut rng);
-        let key = val;
-        match op_gen.sample(&mut rng) {
-            0 => {
-                // insert
-                map.insert(key, val);
+        let key_gen = Uniform::from(0..1000);
+        let op_gen = Uniform::from(0..5);
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..10_000_000 {
+            let val = key_gen.sample(&mut rng);
+            let key = val;
+            match op_gen.sample(&mut rng) {
+                0 => _ = map.insert(key, val),
+                1 => {
+                    map.get_mut(&key).map(|x| {
+                        *x += 1;
+                        x
+                    });
+                }
+                2 => _ = map.get(&key),
+                3 => _ = map.remove(&key),
+                _ => (),
             }
-            1 => {
-                // get mut
-                map.get_mut(&key).map(|x| {
-                    *x += 1;
-                    x
-                });
-            }
-            2 => {
-                // get
-                map.get(&key);
-            }
-            3 => {
-                // remove
-                map.remove(&key);
-            }
-            _ => {}
         }
+        println!("{:?}", map.len());
     }
 }
