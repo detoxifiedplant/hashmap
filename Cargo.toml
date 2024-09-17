@@ -5,3 +5,6 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8"
+hashbrown = "0.14"
+twox-hash = "1.6.3"
+ahash = "0.8.11"

@@ -1,10 +1,12 @@
+#![allow(unused_imports)]
+
 use core::panic;
 use rand::distributions::{Uniform, Distribution};
 use std::borrow::Borrow;
 use std::cmp::max;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap as StdHashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::mem::{swap, take};
 
@@ -17,7 +19,7 @@ enum Entry<Key, Value> {
 
 #[derive(Debug)]
 struct HashMap<Key, Val> {
-    xs: Vec<Entry<Key, Val>>,
+    data: Vec<Entry<Key, Val>>,
     n_occupied: usize,
     n_vacant: usize,
 }
@@ -26,6 +28,7 @@ impl<Key, Val> Entry<Key, Val> {
     fn take(&mut self) -> Option<Val> {
         match self {
             Self::Occupied { .. } => {
+                // TODO: implement round robin and eliminate tombstone
                 let mut occupied = Self::Tombstone;
                 swap(self, &mut occupied);
                 if let Self::Occupied { key: _, val } = occupied {
@@ -87,10 +90,10 @@ where
     }
 }
 
-impl<Key: Eq + Hash, Val> MapTrait<Key, Val> for HashMap<Key, Val> {
+impl<Key: Eq + Hash + Debug, Val> MapTrait<Key, Val> for HashMap<Key, Val> {
     fn new() -> Self {
         Self {
-            xs: Vec::new(),
+            data: Vec::new(),
             n_occupied: 0,
             n_vacant: 0,
         }
@@ -118,12 +121,12 @@ impl<Key: Eq + Hash, Val> MapTrait<Key, Val> for HashMap<Key, Val> {
 
         let mut idx = self.get_index(key);
         loop {
-            match &self.xs[idx] {
+            match &self.data[idx] {
                 Entry::Vacant => break None,
                 Entry::Occupied { key: k, val } if k.borrow() == key => {
                     break Some(val);
                 }
-                _ => idx = (idx + 1) % self.xs.len(),
+                _ => idx = (idx + 1) % self.data.len(),
             }
         }
     }
@@ -180,53 +183,58 @@ impl<Key: Eq + Hash, Val> MapTrait<Key, Val> for HashMap<Key, Val> {
     }
 }
 
-impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
-    fn index(&self, hash: usize) -> usize {
-        hash & (self.xs.len() - 1)
+impl<Key: Eq + Hash + Debug, Val> HashMap<Key, Val> {
+    fn index<Q>(&self, hash: usize, _k: &Q) -> usize
+    where
+        Key: Borrow<Q>,
+        Q: Eq + Hash + Debug,
+    {
+        println!("{_k:?} {:?}", hash);
+        hash & (self.data.len() - 1)
     }
 
     fn get_index<Q>(&self, key: &Q) -> usize
     where
         Key: Borrow<Q>,
-        Q: Eq + Hash,
+        Q: Eq + Hash + Debug,
     {
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
-        // hasher.finish() as usize % self.xs.len()
-        self.index(hasher.finish() as usize)
+        // hasher.finish() as usize % self.data.len()
+        self.index(hasher.finish() as usize, key)
     }
 
     fn iter_mut_starting_at(&mut self, idx: usize) -> impl Iterator<Item = &mut Entry<Key, Val>> {
-        let (s1, s2) = self.xs.split_at_mut(idx);
+        let (s1, s2) = self.data.split_at_mut(idx);
         s2.iter_mut().chain(s1.iter_mut())
     }
 
     fn load_factor(&self) -> f64 {
-        if self.xs.is_empty() {
+        if self.data.is_empty() {
             1.0
         } else {
-            1.0 - self.n_vacant as f64 / self.xs.len() as f64
+            1.0 - self.n_vacant as f64 / self.data.len() as f64
         }
     }
 
     fn occupied_factor(&self) -> f64 {
-        if self.xs.is_empty() {
+        if self.data.is_empty() {
             1.0
         } else {
-            self.n_occupied as f64 / self.xs.len() as f64
+            self.n_occupied as f64 / self.data.len() as f64
         }
     }
 
     fn resize(&mut self) {
         let resize_factor = if self.occupied_factor() > 0.75 { 2 } else { 1 };
-        let new_size = max(64, self.xs.len() * resize_factor);
+        let new_size = max(64, self.data.len() * resize_factor);
 
         let mut new_table = Self {
-            xs: (0..new_size).map(|_| Entry::Vacant).collect(),
+            data: (0..new_size).map(|_| Entry::Vacant).collect(),
             n_occupied: 0,
             n_vacant: new_size,
         };
-        for entry in take(&mut self.xs) {
+        for entry in take(&mut self.data) {
             if let Entry::Occupied { key, val } = entry {
                 new_table.insert_helper(key, val);
             }
@@ -248,7 +256,7 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
                     swap_tombstone = Some(entry);
                 }
                 Entry::Vacant => {
-                    if swap_tombstone.is_some(){
+                    if swap_tombstone.is_some() {
                         *swap_tombstone.unwrap() = Entry::Occupied { key, val };
                     } else {
                         *entry = Entry::Occupied { key, val };
@@ -271,13 +279,6 @@ impl<Key: Eq + Hash, Val> HashMap<Key, Val> {
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn check() {
-    //     let mut map1 = HashMap::new();
-    //     dbg!(map1.insert("namah", 9));
-    //     println!("{:?}", map1);
-    // }
-
     #[test]
     fn check() {
         // test::<HashMap<i64, i64>>();
@@ -291,7 +292,7 @@ mod tests {
         let mut map = M::new();
 
         let key_gen = Uniform::from(0..1000);
-        let op_gen = Uniform::from(0..5);
+        let op_gen = Uniform::from(0..4);
         let mut rng = rand::thread_rng();
 
         for _ in 0..10_000_000 {
@@ -310,6 +311,5 @@ mod tests {
                 _ => (),
             }
         }
-        println!("{:?}", map.len());
     }
 }
