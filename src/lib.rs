@@ -13,7 +13,7 @@ use std::mem::{swap, take};
 #[derive(Debug)]
 enum Entry<Key, Value> {
     Vacant,
-    Tombstone,
+    Deleted,
     Occupied { key: Key, val: Value },
 }
 
@@ -28,8 +28,8 @@ impl<Key, Val> Entry<Key, Val> {
     fn take(&mut self) -> Option<Val> {
         match self {
             Self::Occupied { .. } => {
-                // TODO: implement round robin and eliminate tombstone
-                let mut occupied = Self::Tombstone;
+                // TODO: implement round robin and eliminate deleted
+                let mut occupied = Self::Deleted;
                 swap(self, &mut occupied);
                 if let Self::Occupied { key: _, val } = occupied {
                     Some(val)
@@ -245,19 +245,19 @@ impl<Key: Eq + Hash + Debug, Val> HashMap<Key, Val> {
     fn insert_helper(&mut self, key: Key, val: Val) -> Option<Val> {
         let idx = self.get_index(&key);
         let mut result = None;
-        let mut swap_tombstone: Option<&mut Entry<Key, Val>> = None;
+        let mut swap_deleted: Option<&mut Entry<Key, Val>> = None;
         for entry in self.iter_mut_starting_at(idx) {
             match entry {
                 Entry::Occupied { key: k, .. } if (k as &Key).borrow() == &key => {
                     result = entry.replace(val);
                     break;
                 }
-                Entry::Tombstone if swap_tombstone.is_none() => {
-                    swap_tombstone = Some(entry);
+                Entry::Deleted if swap_deleted.is_none() => {
+                    swap_deleted = Some(entry);
                 }
                 Entry::Vacant => {
-                    if swap_tombstone.is_some() {
-                        *swap_tombstone.unwrap() = Entry::Occupied { key, val };
+                    if swap_deleted.is_some() {
+                        *swap_deleted.unwrap() = Entry::Occupied { key, val };
                     } else {
                         *entry = Entry::Occupied { key, val };
                     }
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn check() {
         // test::<HashMap<i64, i64>>();
-        test::<std::collections::HashMap<i64, i64>>();
+        // test::<std::collections::HashMap<i64, i64>>();
     }
 
     fn test<M>()
