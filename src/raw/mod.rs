@@ -203,17 +203,16 @@ impl<Key: Eq + Hash + Debug + Copy + Clone, Val: Debug + Copy + Clone> HashMap<K
 
     fn find_insert_slot_in_group(&self, group: &Group, probe_seq: usize) -> Option<usize> {
         let bit = group.match_empty_or_deleted().lowest_set_bit();
-
-        bit.map(|b| (probe_seq + b) & (self.data.len() - 1))
+        bit.map(|b| probe_seq + b)
     }
 
     fn insert_helper(&mut self, key: Key, val: Val) -> Option<Val> {
-        let hash = Self::get_hash(&key);
         let entry_exists = self.get_index(&key);
         if let Some(index) = entry_exists {
             self.data[index] = Some(Entry { key, val });
             return Some(val);
         }
+        let hash = Self::get_hash(&key);
         unsafe {
             let slot = self.find_insert_slot(hash);
 

@@ -28,9 +28,8 @@ impl Group {
 
     pub(crate) fn match_empty_or_deleted(self) -> BitMask {
         unsafe {
-            // A byte is EMPTY or DELETED iff the high bit is set
+            // A byte is EMPTY or DELETED if the high bit is set
             BitMask(x86::_mm_movemask_epi8(self.0) as u16)
         }
     }
 }
-
