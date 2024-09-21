@@ -27,7 +27,7 @@ pub struct Entry<Key, Value> {
 
 #[derive(Debug)]
 pub struct HashMap<Key, Val> {
-    data: Vec<Option<Entry<Key, Val>>>,
+    pub data: Vec<Option<Entry<Key, Val>>>,
     control_bytes: Vec<u8>,
     n_occupied: usize,
     n_vacant: usize,
@@ -68,7 +68,7 @@ impl<Key: Eq + Hash + Debug + Copy + Clone, Val: Debug + Copy + Clone> HashMap<K
 
         let idx = self.get_index(key);
         if let Some(index) = idx {
-            return Some(&self.data[index].as_ref().unwrap().val);
+            return self.data[index].as_ref().map(|entry| &entry.val);
         }
         None
     }
@@ -94,7 +94,12 @@ impl<Key: Eq + Hash + Debug + Copy + Clone, Val: Debug + Copy + Clone> HashMap<K
         }
         let index = self.get_index(key)?;
         self.data[index] = None;
+        // TODO: if any other elements are empty
+        // if group.match_empty().any_bit_set() {
+        //     self.control_bytes[index] = EMPTY;
+        // } else {
         self.control_bytes[index] = DELETED;
+        // }
         self.n_occupied -= 1;
         self.n_vacant += 1;
         None
@@ -157,6 +162,10 @@ impl<Key: Eq + Hash + Debug + Copy + Clone, Val: Debug + Copy + Clone> HashMap<K
         } else {
             self.n_occupied as f64 / self.data.len() as f64
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
     }
 
     fn resize(&mut self) {
