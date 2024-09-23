@@ -33,14 +33,14 @@ impl Group {
         }
     }
 
+    // compares loaded control bytes with EMPTY bytes
     pub(crate) fn match_empty(self) -> BitMask {
-        // compares loaded data with EMPTY bytes
         self.match_byte(EMPTY)
     }
 
+    // A byte is EMPTY or DELETED if the high bit is set
     pub(crate) fn match_empty_or_deleted(self) -> BitMask {
         unsafe {
-            // A byte is EMPTY or DELETED if the high bit is set
             BitMask(x86::_mm_movemask_epi8(self.0) as u16)
         }
     }

@@ -4,6 +4,8 @@ pub mod sse2;
 pub const EMPTY: u8 = 0b1111_1111;
 pub const DELETED: u8 = 0b1000_0000;
 
+#[cfg(feature = "nightly")]
+use core::intrinsics::{likely, unlikely};
 use sse2::Group;
 use std::borrow::Borrow;
 use std::cmp::max;
@@ -11,11 +13,13 @@ use std::collections::hash_map::DefaultHasher;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 use std::mem::{swap, take};
-const GROUP_SIZE: usize = 16;
 
+const GROUP_SIZE: usize = 16;
 const BIT_SHIFT: u8 = 64 - 7;
+
+// in order to get top 7 bits of hash, shift the hash value >> 57
 fn h2(hash: usize) -> u8 {
-    let top7_bits = hash >> (BIT_SHIFT);
+    let top7_bits = hash >> BIT_SHIFT;
     (top7_bits & 0x7f) as u8 // truncation
 }
 
@@ -93,16 +97,12 @@ impl<Key: Eq + Hash + Debug + Copy + Clone, Val: Debug + Copy + Clone> HashMap<K
             return None;
         }
         let index = self.get_index(key)?;
+        let entry = self.data[index];
         self.data[index] = None;
-        // TODO: if any other elements are empty
-        // if group.match_empty().any_bit_set() {
-        //     self.control_bytes[index] = EMPTY;
-        // } else {
-        self.control_bytes[index] = DELETED;
-        // }
+        self.control_bytes[index] = EMPTY;
         self.n_occupied -= 1;
         self.n_vacant += 1;
-        None
+        Some(entry.unwrap().val)
     }
 
     fn is_empty(&self) -> bool {
@@ -209,8 +209,9 @@ impl<Key: Eq + Hash + Debug + Copy + Clone, Val: Debug + Copy + Clone> HashMap<K
     fn insert_helper(&mut self, key: Key, val: Val) -> Option<Val> {
         let entry_exists = self.get_index(&key);
         if let Some(index) = entry_exists {
+            let entry = self.data[index];
             self.data[index] = Some(Entry { key, val });
-            return Some(val);
+            return Some(entry.unwrap().val);
         }
         let hash = Self::get_hash(&key);
         unsafe {
