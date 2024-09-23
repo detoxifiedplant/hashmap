@@ -70,11 +70,8 @@ impl<Key: Eq + Hash + Debug + Copy + Clone, Val: Debug + Copy + Clone> HashMap<K
             return None;
         }
 
-        let idx = self.get_index(key);
-        if let Some(index) = idx {
-            return self.data[index].as_ref().map(|entry| &entry.val);
-        }
-        None
+        let index = self.get_index(key)?;
+        return self.data[index].as_ref().map(|entry| &entry.val);
     }
 
     pub fn get_mut(&mut self, key: &Key) -> Option<&mut Val>
@@ -99,7 +96,12 @@ impl<Key: Eq + Hash + Debug + Copy + Clone, Val: Debug + Copy + Clone> HashMap<K
         let index = self.get_index(key)?;
         let entry = self.data[index];
         self.data[index] = None;
-        self.control_bytes[index] = EMPTY;
+        // TODO: check if any other elements are EMPTY in the group
+        // if group.match_empty().any_bit_set() {
+            // self.control_bytes[index] = EMPTY;
+        // } else {
+            self.control_bytes[index] = DELETED;
+        // }
         self.n_occupied -= 1;
         self.n_vacant += 1;
         Some(entry.unwrap().val)
