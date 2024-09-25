@@ -11,10 +11,12 @@ pub(crate) struct Group(x86::__m128i);
 impl Group {
 
     // loads 128-bit data from given pointer
+    #[inline]
     pub(crate) unsafe fn load(ptr: *const u8) -> Self {
         Group(x86::_mm_loadu_si128(ptr.cast()))
     }
 
+    #[inline]
     pub(crate) fn match_byte(self, byte: u8) -> BitMask {
         unsafe {
             // _mm_set1_epi8 creates a vector for given value
@@ -34,11 +36,14 @@ impl Group {
     }
 
     // compares loaded control bytes with EMPTY bytes
+    #[inline]
     pub(crate) fn match_empty(self) -> BitMask {
         self.match_byte(EMPTY)
     }
 
     // A byte is EMPTY or DELETED if the high bit is set
+    // selects signed bits out of each i8 and produces a bitmask
+    #[inline]
     pub(crate) fn match_empty_or_deleted(self) -> BitMask {
         unsafe {
             BitMask(x86::_mm_movemask_epi8(self.0) as u16)

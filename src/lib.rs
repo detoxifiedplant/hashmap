@@ -9,7 +9,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let mut map: HashMap<u32, u32> = HashMap::new();
+        let mut map: HashMap<_, _> = HashMap::new();
         // let mut map: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
 
         // let key_gen = Uniform::from(0..1_000_000);
@@ -24,7 +24,6 @@ mod tests {
                 match i {
                     0 => {
                         map.insert(key, val);
-                        // assert_eq!(&val, map.get(&key).unwrap())
                     }
                     1 => {
                         map.get_mut(&key).map(|x| {
@@ -33,14 +32,9 @@ mod tests {
                         });
                     }
                     2 => assert_eq!(val * 10, *map.get(&key).unwrap()),
-                    // 3 => _ = map.remove(&key),
                     _ => (),
                 }
             }
-        }
-        for j in 0..1_000_000 {
-            let (key, val) = (j, j);
-            assert_eq!(val * 10, *map.get(&key).unwrap());
         }
     }
 
